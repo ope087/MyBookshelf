@@ -1,5 +1,7 @@
 package com.kunfei.bookshelf.help;
 
+import static android.content.Context.DOWNLOAD_SERVICE;
+
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
@@ -21,15 +23,12 @@ import com.kunfei.bookshelf.base.observer.MyObserver;
 import com.kunfei.bookshelf.bean.UpdateInfoBean;
 import com.kunfei.bookshelf.model.analyzeRule.AnalyzeHeaders;
 import com.kunfei.bookshelf.model.impl.IHttpGetApi;
-import com.kunfei.bookshelf.view.activity.UpdateActivity;
 
 import java.io.File;
 
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.schedulers.Schedulers;
-
-import static android.content.Context.DOWNLOAD_SERVICE;
 
 public class UpdateManager {
     private Activity activity;
@@ -45,7 +44,7 @@ public class UpdateManager {
     public void checkUpdate(boolean showMsg) {
         BaseModelImpl.getInstance().getRetrofitString("https://api.github.com")
                 .create(IHttpGetApi.class)
-                .get(MApplication.getInstance().getString(R.string.latest_release_api), AnalyzeHeaders.getMap(null))
+                .get(MApplication.getInstance().getString(R.string.latest_release_api), AnalyzeHeaders.getDefaultHeader())
                 .flatMap(response -> analyzeLastReleaseApi(response.body()))
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
@@ -53,10 +52,10 @@ public class UpdateManager {
                     @Override
                     public void onNext(UpdateInfoBean updateInfo) {
                         if (updateInfo.getUpDate()) {
-                            UpdateActivity.startThis(activity, updateInfo);
+
                         } else if (showMsg) {
                             Toast.makeText(activity, "已是最新版本", Toast.LENGTH_SHORT).show();
-                            UpdateActivity.startThis(activity, updateInfo);
+
                         }
                     }
 

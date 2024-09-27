@@ -1,62 +1,60 @@
 package com.kunfei.bookshelf.view.activity;
 
+import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
+import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.LinearLayout;
-import android.widget.Switch;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.appcompat.app.ActionBar;
-import androidx.appcompat.widget.Toolbar;
 
 import com.hwangjr.rxbus.RxBus;
 import com.jaredrummler.android.colorpicker.ColorPickerDialog;
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener;
 import com.kunfei.basemvplib.impl.IPresenter;
-import com.kunfei.bookshelf.MApplication;
 import com.kunfei.bookshelf.R;
 import com.kunfei.bookshelf.base.MBaseActivity;
 import com.kunfei.bookshelf.constant.RxBusTag;
+import com.kunfei.bookshelf.databinding.ActivityReadStyleBinding;
 import com.kunfei.bookshelf.help.ReadBookControl;
+import com.kunfei.bookshelf.help.permission.Permissions;
+import com.kunfei.bookshelf.help.permission.PermissionsCompat;
+import com.kunfei.bookshelf.utils.ActivityExtensionsKt;
 import com.kunfei.bookshelf.utils.BitmapUtil;
-import com.kunfei.bookshelf.utils.FileUtils;
-import com.kunfei.bookshelf.utils.PermissionUtils;
-import com.kunfei.bookshelf.utils.bar.ImmersionBar;
+import com.kunfei.bookshelf.utils.ContextExtensionsKt;
+import com.kunfei.bookshelf.utils.MeUtils;
+import com.kunfei.bookshelf.utils.RealPathUtil;
+import com.kunfei.bookshelf.widget.filepicker.picker.FilePicker;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
-public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialogListener {
+import kotlin.Unit;
+
+public class ReadStyleActivity extends MBaseActivity<IPresenter> implements ColorPickerDialogListener {
     private final int ResultSelectBg = 103;
     private final int SELECT_TEXT_COLOR = 201;
     private final int SELECT_BG_COLOR = 301;
 
-    @BindView(R.id.ll_content)
-    LinearLayout llContent;
-    @BindView(R.id.toolbar)
-    Toolbar toolbar;
-    @BindView(R.id.tv_content)
-    TextView tvContent;
-    @BindView(R.id.tvSelectTextColor)
-    TextView tvSelectTextColor;
-    @BindView(R.id.tvSelectBgColor)
-    TextView tvSelectBgColor;
-    @BindView(R.id.tvSelectBgImage)
-    TextView tvSelectBgImage;
-    @BindView(R.id.tvDefault)
-    TextView tvDefault;
-    @BindView(R.id.sw_darkStatusIcon)
-    Switch swDarkStatusIcon;
-
+    private ActivityReadStyleBinding binding;
     private ReadBookControl readBookControl = ReadBookControl.getInstance();
     private int textDrawableIndex;
     private int textColor;
@@ -65,6 +63,7 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
     private int bgCustom;
     private boolean darkStatusIcon;
     private String bgPath;
+    private BgImgListAdapter bgImgListAdapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,10 +83,10 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
      */
     @Override
     protected void onCreateActivity() {
-        setContentView(R.layout.activity_read_style);
-        ButterKnife.bind(this);
-        llContent.setPadding(0, ImmersionBar.getStatusBarHeight(this), 0, 0);
-        this.setSupportActionBar(toolbar);
+        binding = ActivityReadStyleBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+        binding.llContent.setPadding(0, ContextExtensionsKt.getStatusBarHeight(this), 0, 0);
+        this.setSupportActionBar(binding.toolbar);
         setupActionBar();
         setTextKind(readBookControl);
     }
@@ -95,14 +94,7 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
     @Override
     protected void initImmersionBar() {
         super.initImmersionBar();
-        if (!isImmersionBarEnabled()) {
-            mImmersionBar.statusBarDarkFont(false);
-        } else if (darkStatusIcon) {
-            mImmersionBar.statusBarDarkFont(true);
-        } else {
-            mImmersionBar.statusBarDarkFont(false);
-        }
-        mImmersionBar.init();
+        ActivityExtensionsKt.setLightStatusBar(this, darkStatusIcon);
     }
 
     /**
@@ -131,13 +123,21 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
      */
     @Override
     protected void bindEvent() {
-        swDarkStatusIcon.setChecked(darkStatusIcon);
-        swDarkStatusIcon.setOnCheckedChangeListener((compoundButton, b) -> {
+        binding.swDarkStatusIcon.setChecked(darkStatusIcon);
+        binding.swDarkStatusIcon.setOnCheckedChangeListener((compoundButton, b) -> {
             darkStatusIcon = b;
             initImmersionBar();
         });
+        //文字背景点击事件
+        binding.llContent.setOnClickListener((view) -> {
+            if (binding.llBottom.getVisibility() == View.GONE) {
+                binding.llBottom.setVisibility(View.VISIBLE);
+            } else {
+                binding.llBottom.setVisibility(View.GONE);
+            }
+        });
         //选择文字颜色
-        tvSelectTextColor.setOnClickListener(view ->
+        binding.tvSelectTextColor.setOnClickListener(view ->
                 ColorPickerDialog.newBuilder()
                         .setColor(textColor)
                         .setShowAlphaSlider(false)
@@ -145,45 +145,65 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
                         .setDialogId(SELECT_TEXT_COLOR)
                         .show(ReadStyleActivity.this));
         //选择背景颜色
-        tvSelectBgColor.setOnClickListener(view ->
+        binding.tvSelectBgColor.setOnClickListener(view ->
                 ColorPickerDialog.newBuilder()
                         .setColor(bgColor)
                         .setShowAlphaSlider(false)
                         .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
                         .setDialogId(SELECT_BG_COLOR)
                         .show(ReadStyleActivity.this));
+
+        //背景图列表
+        bgImgListAdapter = new BgImgListAdapter(this);
+        bgImgListAdapter.initList();
+        binding.bgImgList.setAdapter(bgImgListAdapter);
+        binding.bgImgList.setOnItemClickListener((adapterView, view, i, l) -> {
+            if (i == 0) {
+                selectImage();
+            } else {
+                bgPath = bgImgListAdapter.getItemAssetsFile(i - 1);
+                setAssetsBg(bgPath);
+            }
+        });
+
         //选择背景图片
-        tvSelectBgImage.setOnClickListener(view ->
-                PermissionUtils
-                        .checkMorePermissions(ReadStyleActivity.this,
-                                MApplication.PerList,
-                                new PermissionUtils.PermissionCheckCallback() {
-                                    @Override
-                                    public void onHasPermission() {
-                                        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                                        intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                        intent.setType("image/*");
-                                        startActivityForResult(intent, ResultSelectBg);
-                                    }
+        binding.tvSelectBgImage.setOnClickListener(view -> selectImage());
 
-                                    @Override
-                                    public void onUserHasAlreadyTurnedDown(String... permission) {
-                                        ReadStyleActivity.this.toast(R.string.bg_image_per);
-                                    }
-
-                                    @Override
-                                    public void onAlreadyTurnedDownAndNoAsk(String... permission) {
-                                        PermissionUtils.requestMorePermissions(ReadStyleActivity.this, MApplication.PerList, MApplication.RESULT__PERMS);
-                                    }
-                                }));
         //恢复默认
-        tvDefault.setOnClickListener(view -> {
+        binding.tvDefault.setOnClickListener(view -> {
             bgCustom = 0;
             textColor = readBookControl.getDefaultTextColor(textDrawableIndex);
             bgDrawable = readBookControl.getDefaultBgDrawable(textDrawableIndex, this);
             upText();
             upBg();
         });
+    }
+
+    private void selectImage() {
+        new PermissionsCompat.Builder(this)
+                .addPermissions(Permissions.READ_EXTERNAL_STORAGE, Permissions.WRITE_EXTERNAL_STORAGE)
+                .rationale(R.string.bg_image_per)
+                .onGranted((requestCode) -> {
+                    selectImageDialog();
+                    return Unit.INSTANCE;
+                })
+                .request();
+    }
+
+    private void selectImageDialog() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            startActivityForResult(intent, ResultSelectBg);
+        } catch (Exception e) {
+            FilePicker picker = new FilePicker(this, FilePicker.FILE);
+            picker.setBackgroundColor(getResources().getColor(R.color.background));
+            picker.setTopBackgroundColor(getResources().getColor(R.color.background));
+            picker.setItemHeight(30);
+            picker.setOnFilePickListener(this::setCustomBg);
+            picker.show();
+        }
     }
 
     //设置ToolBar
@@ -206,13 +226,10 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-        switch (id) {
-            case R.id.action_save:
-                saveStyle();
-                break;
-            case android.R.id.home:
-                finish();
-                break;
+        if (id == R.id.action_save) {
+            saveStyle();
+        } else if (id == android.R.id.home) {
+            finish();
         }
         return super.onOptionsItemSelected(item);
     }
@@ -225,7 +242,7 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
         readBookControl.setBgCustom(textDrawableIndex, bgCustom);
         readBookControl.setBgColor(textDrawableIndex, bgColor);
         readBookControl.setDarkStatusIcon(textDrawableIndex, darkStatusIcon);
-        if (bgCustom == 2) {
+        if (bgCustom == 2 || bgCustom == 3) {
             readBookControl.setBgPath(textDrawableIndex, bgPath);
         }
         readBookControl.initTextDrawableIndex();
@@ -234,23 +251,22 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
     }
 
     private void setTextKind(ReadBookControl readBookControl) {
-        tvContent.setTextSize(readBookControl.getTextSize());
+        binding.tvContent.setTextSize(readBookControl.getTextSize());
     }
 
     private void upText() {
-        tvContent.setTextColor(textColor);
+        binding.tvContent.setTextColor(textColor);
     }
 
     private void upBg() {
-        llContent.setBackground(bgDrawable);
+        binding.llContent.setBackground(bgDrawable);
     }
 
     /**
      * 自定义背景
      */
-    public void setCustomBg(Uri uri) {
+    public void setCustomBg(String bgPath) {
         try {
-            bgPath = FileUtils.getPath(this, uri);
             Resources resources = this.getResources();
             DisplayMetrics dm = resources.getDisplayMetrics();
             int width = dm.widthPixels;
@@ -265,19 +281,39 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
         }
     }
 
+    public void setAssetsBg(String path) {
+        try {
+            Resources resources = ReadStyleActivity.this.getResources();
+            DisplayMetrics dm = resources.getDisplayMetrics();
+            int width = dm.widthPixels;
+            int height = dm.heightPixels;
+
+            Bitmap bitmap = MeUtils.getFitAssetsSampleBitmap(ReadStyleActivity.this.getAssets(), path, width, height);
+            bgCustom = 3;
+            bgDrawable = new BitmapDrawable(getResources(), bitmap);
+            upBg();
+        } catch (Exception e) {
+            e.printStackTrace();
+            toast(e.getMessage(), ERROR);
+        }
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == ResultSelectBg) {
             if (resultCode == RESULT_OK && null != data) {
-                setCustomBg(data.getData());
+                try {
+                    bgPath = RealPathUtil.getPath(this, data.getData());
+                    setCustomBg(bgPath);
+                } catch (Exception ignored) {
+                }
             }
         }
     }
 
     /**
      * Callback that is invoked when a color is selected from the color picker dialog.
-     *
      * @param dialogId The dialog id used to create the dialog instance.
      * @param color    The selected color
      */
@@ -298,11 +334,109 @@ public class ReadStyleActivity extends MBaseActivity implements ColorPickerDialo
 
     /**
      * Callback that is invoked when the color picker dialog was dismissed.
-     *
      * @param dialogId The dialog id used to create the dialog instance.
      */
     @Override
     public void onDialogDismissed(int dialogId) {
+
+    }
+
+    private static class BgImgListAdapter extends BaseAdapter {
+        private final Context context;
+        private final LayoutInflater mInflater;
+        private List<String> assetsFiles;
+        final BitmapFactory.Options options = new BitmapFactory.Options();
+
+        BgImgListAdapter(Context context) {
+            this.context = context;
+            mInflater = (LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+
+            options.inJustDecodeBounds = false;
+            options.inSampleSize = 4;
+        }
+
+        void initList() {
+            AssetManager am = context.getAssets();
+            String[] path;
+            try {
+                path = am.list("bg");  //获取所有,填入目录获取该目录下所有资源
+            } catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
+
+            assetsFiles = new ArrayList<>();
+            Collections.addAll(assetsFiles, path);
+        }
+
+        @Override
+        public int getCount() {
+            return assetsFiles.size() + 1;
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return position;
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        String getItemAssetsFile(int position) {
+            return "bg/" + assetsFiles.get(position);
+        }
+
+        @SuppressLint("InflateParams")
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            ViewHolder holder;
+            if(convertView==null){
+                holder = new ViewHolder();
+                convertView = mInflater.inflate(R.layout.item_read_bg, null);
+                holder.mImage = convertView.findViewById(R.id.iv_bg);
+                holder.mTitle = convertView.findViewById(R.id.tv_desc);
+                convertView.setTag(holder);
+            } else {
+                holder = (ViewHolder)convertView.getTag();
+            }
+            if (position == 0) {
+                holder.mTitle.setText("选择背景");
+                holder.mTitle.setTextColor(Color.parseColor("#101010"));
+                holder.mImage.setImageBitmap(BitmapFactory.decodeResource(context.getResources(), R.drawable.icon_image));
+            } else {
+                String path = assetsFiles.get(position - 1);
+                holder.mTitle.setText(getFileName(path));
+                holder.mTitle.setTextColor(Color.parseColor("#909090"));
+                try {
+                    BitmapDrawable bitmapDrawable = (BitmapDrawable) holder.mImage.getDrawable();
+                    //如果图片还未回收，先强制回收该图片
+                    if (bitmapDrawable != null && !bitmapDrawable.getBitmap().isRecycled()) {
+                        bitmapDrawable.getBitmap().recycle();
+                    }
+                    //该变现实的图片
+                    Bitmap bmp = MeUtils.getFitAssetsSampleBitmap(context.getAssets(), getItemAssetsFile(position - 1), 256, 256);
+                    holder.mImage.setImageBitmap(bmp);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    holder.mImage.setImageBitmap(null);
+                }
+            }
+            return convertView;
+        }
+
+        String getFileName(String path) {
+            int start = path.lastIndexOf("/");
+            int end = path.lastIndexOf(".");
+            if (end < 0) end = path.length();
+            return path.substring(start + 1, end);
+        }
+
+        private static class ViewHolder {
+            private TextView mTitle ;
+            private ImageView mImage;
+        }
 
     }
 }

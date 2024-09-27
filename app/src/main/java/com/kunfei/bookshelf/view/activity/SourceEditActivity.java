@@ -1,5 +1,7 @@
 package com.kunfei.bookshelf.view.activity;
 
+import static android.text.TextUtils.isEmpty;
+
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
@@ -17,20 +19,15 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
-import android.widget.LinearLayout;
 import android.widget.PopupWindow;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.appbar.AppBarLayout;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.zxing.EncodeHintType;
@@ -43,6 +40,7 @@ import com.kunfei.bookshelf.base.observer.MyObserver;
 import com.kunfei.bookshelf.base.observer.MySingleObserver;
 import com.kunfei.bookshelf.bean.BookSourceBean;
 import com.kunfei.bookshelf.constant.BookType;
+import com.kunfei.bookshelf.databinding.ActivitySourceEditBinding;
 import com.kunfei.bookshelf.model.BookSourceManager;
 import com.kunfei.bookshelf.presenter.SourceEditPresenter;
 import com.kunfei.bookshelf.presenter.contract.SourceEditContract;
@@ -51,52 +49,37 @@ import com.kunfei.bookshelf.utils.RxUtils;
 import com.kunfei.bookshelf.utils.SoftInputUtil;
 import com.kunfei.bookshelf.utils.theme.ThemeStore;
 import com.kunfei.bookshelf.view.adapter.SourceEditAdapter;
+import com.kunfei.bookshelf.view.dialog.SourceLoginDialog;
 import com.kunfei.bookshelf.view.popupwindow.KeyboardToolPop;
-import com.kunfei.bookshelf.widget.views.ATECheckBox;
+
+import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
 import cn.bingoogolapple.qrcode.zxing.QRCodeEncoder;
 import io.reactivex.Observable;
 import io.reactivex.Single;
 import io.reactivex.SingleOnSubscribe;
-
-import static android.text.TextUtils.isEmpty;
 
 /**
  * Created by GKF on 2018/1/26.
  * 编辑书源
  */
 
-public class SourceEditActivity extends MBaseActivity<SourceEditContract.Presenter> implements SourceEditContract.View {
+public class SourceEditActivity extends MBaseActivity<SourceEditContract.Presenter> implements SourceEditContract.View, KeyboardToolPop.CallBack {
     public final static int EDIT_SOURCE = 1101;
     private final int REQUEST_QR = 202;
 
-    @BindView(R.id.action_bar)
-    AppBarLayout actionBar;
-    @BindView(R.id.toolbar)
-    Toolbar toolbar;
-    @BindView(R.id.ll_content)
-    LinearLayout llContent;
-    @BindView(R.id.cb_is_audio)
-    ATECheckBox cbIsAudio;
-    @BindView(R.id.cb_is_enable)
-    ATECheckBox cbIsEnable;
-    @BindView(R.id.tv_edit_find)
-    TextView tvEditFind;
-    @BindView(R.id.recycler_view)
-    RecyclerView recyclerView;
-
+    private ActivitySourceEditBinding binding;
     private SourceEditAdapter adapter;
-    private List<SourceEdit> sourceEditList = new ArrayList<>();
-    private List<SourceEdit> findEditList = new ArrayList<>();
+    private final List<SourceEdit> sourceEditList = new ArrayList<>();
+    private final List<SourceEdit> findEditList = new ArrayList<>();
     private BookSourceBean bookSourceBean;
     private int serialNumber;
     private boolean enable;
@@ -104,6 +87,8 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     private PopupWindow mSoftKeyboardTool;
     private boolean mIsSoftKeyBoardShowing = false;
     private boolean showFind;
+    private String[] keyHelp = {"@", "&", "|", "%", "/", ":", "[", "]", "(", ")", "{", "}", "<", ">", "\\", "$", "#", "!", ".",
+            "href", "src", "textNodes", "xpath", "json", "css", "id", "class", "tag"};
 
     public static void startThis(Object object, BookSourceBean sourceBean) {
         String key = String.valueOf(System.currentTimeMillis());
@@ -153,7 +138,8 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     @Override
     protected void onCreateActivity() {
         getWindow().getDecorView().setBackgroundColor(ThemeStore.backgroundColor(this));
-        setContentView(R.layout.activity_source_edit);
+        binding = ActivitySourceEditBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
     }
 
     @Override
@@ -175,14 +161,13 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
 
     @Override
     protected void bindView() {
-        ButterKnife.bind(this);
-        this.setSupportActionBar(toolbar);
+        this.setSupportActionBar(binding.toolbar);
         setupActionBar();
-        mSoftKeyboardTool = new KeyboardToolPop(this, this::insertTextToEditText);
+        mSoftKeyboardTool = new KeyboardToolPop(this, Arrays.asList(keyHelp), this);
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(new KeyboardOnGlobalChangeListener());
         adapter = new SourceEditAdapter(this);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(adapter);
+        binding.recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        binding.recyclerView.setAdapter(adapter);
         adapter.reSetData(sourceEditList);
         setText(bookSourceBean);
     }
@@ -190,24 +175,24 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     @Override
     protected void bindEvent() {
         super.bindEvent();
-        tvEditFind.setOnClickListener(v -> {
-            recyclerView.clearFocus();
+        binding.tvEditFind.setOnClickListener(v -> {
+            binding.recyclerView.clearFocus();
             if (showFind) {
                 adapter.reSetData(sourceEditList);
-                tvEditFind.setText(R.string.edit_find);
+                binding.tvEditFind.setText(R.string.edit_find);
             } else {
                 adapter.reSetData(findEditList);
-                tvEditFind.setText(R.string.back);
+                binding.tvEditFind.setText(R.string.back);
             }
             showFind = !showFind;
-            recyclerView.scrollToPosition(0);
+            binding.recyclerView.scrollToPosition(0);
         });
     }
 
     private boolean canSaveBookSource() {
-        SoftInputUtil.hideIMM(recyclerView);
-        recyclerView.clearFocus();
-        BookSourceBean bookSourceBean = getBookSource();
+        SoftInputUtil.hideIMM(binding.recyclerView);
+        binding.recyclerView.clearFocus();
+        BookSourceBean bookSourceBean = getBookSource(true);
         if (isEmpty(bookSourceBean.getBookSourceName()) || isEmpty(bookSourceBean.getBookSourceUrl())) {
             toast(R.string.non_null_source_name_url, ERROR);
             return false;
@@ -216,12 +201,12 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     }
 
     @Override
-    public String getBookSourceStr() {
+    public String getBookSourceStr(boolean hasFind) {
         Gson gson = new GsonBuilder()
                 .disableHtmlEscaping()
                 .setPrettyPrinting()
                 .create();
-        return gson.toJson(getBookSource());
+        return gson.toJson(getBookSource(hasFind));
     }
 
     @Override
@@ -233,6 +218,8 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         sourceEditList.add(new SourceEdit("bookSourceName", bookSourceBean.getBookSourceName(), R.string.book_source_name));
         sourceEditList.add(new SourceEdit("bookSourceGroup", bookSourceBean.getBookSourceGroup(), R.string.book_source_group));
         sourceEditList.add(new SourceEdit("loginUrl", bookSourceBean.getLoginUrl(), R.string.book_source_login_url));
+        sourceEditList.add(new SourceEdit("loginUi", bookSourceBean.getLoginUi(), R.string.login_ui));
+        sourceEditList.add(new SourceEdit("loginCheckJs", bookSourceBean.getLoginCheckJs(), R.string.login_check_js));
         //搜索
         sourceEditList.add(new SourceEdit("ruleSearchUrl", bookSourceBean.getRuleSearchUrl(), R.string.rule_search_url));
         sourceEditList.add(new SourceEdit("ruleSearchList", bookSourceBean.getRuleSearchList(), R.string.rule_search_list));
@@ -258,9 +245,12 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         sourceEditList.add(new SourceEdit("ruleChapterList", bookSourceBean.getRuleChapterList(), R.string.rule_chapter_list));
         sourceEditList.add(new SourceEdit("ruleChapterName", bookSourceBean.getRuleChapterName(), R.string.rule_chapter_name));
         sourceEditList.add(new SourceEdit("ruleContentUrl", bookSourceBean.getRuleContentUrl(), R.string.rule_content_url));
+        sourceEditList.add(new SourceEdit("ruleChapterVip", bookSourceBean.getRuleChapterVip(), R.string.rule_vip));
+        sourceEditList.add(new SourceEdit("ruleChapterPay", bookSourceBean.getRuleChapterPay(), R.string.rule_pay));
         //正文页
         sourceEditList.add(new SourceEdit("ruleContentUrlNext", bookSourceBean.getRuleContentUrlNext(), R.string.rule_content_url_next));
         sourceEditList.add(new SourceEdit("ruleBookContent", bookSourceBean.getRuleBookContent(), R.string.rule_book_content));
+        sourceEditList.add(new SourceEdit("ruleBookContentReplace", bookSourceBean.getRuleBookContentReplace(), R.string.rule_book_content_replace));
         sourceEditList.add(new SourceEdit("httpUserAgent", bookSourceBean.getHttpUserAgent(), R.string.source_user_agent));
 
         //发现
@@ -279,8 +269,8 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         } else {
             adapter.reSetData(sourceEditList);
         }
-        cbIsAudio.setChecked(Objects.equals(bookSourceBean.getBookSourceType(), BookType.AUDIO));
-        cbIsEnable.setChecked(bookSourceBean.getEnable());
+        binding.cbIsAudio.setChecked(Objects.equals(bookSourceBean.getBookSourceType(), BookType.AUDIO));
+        binding.cbIsEnable.setChecked(bookSourceBean.getEnable());
     }
 
     private void scanBookSource() {
@@ -288,7 +278,7 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         startActivityForResult(intent, REQUEST_QR);
     }
 
-    private BookSourceBean getBookSource() {
+    private BookSourceBean getBookSource(boolean hasFind) {
         BookSourceBean bookSourceBeanN = new BookSourceBean();
         for (SourceEdit sourceEdit : sourceEditList) {
             switch (sourceEdit.getKey()) {
@@ -303,6 +293,12 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
                     break;
                 case "loginUrl":
                     bookSourceBeanN.setLoginUrl(sourceEdit.value);
+                    break;
+                case "loginUi":
+                    bookSourceBeanN.setLoginUi(sourceEdit.value);
+                    break;
+                case "loginCheckJs":
+                    bookSourceBeanN.setLoginCheckJs(sourceEdit.value);
                     break;
                 case "ruleSearchUrl":
                     bookSourceBeanN.setRuleSearchUrl(sourceEdit.value);
@@ -367,6 +363,12 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
                 case "ruleChapterName":
                     bookSourceBeanN.setRuleChapterName(sourceEdit.value);
                     break;
+                case "ruleVip":
+                    bookSourceBeanN.setRuleChapterVip(sourceEdit.value);
+                    break;
+                case "rulePay":
+                    bookSourceBeanN.setRuleChapterPay(sourceEdit.value);
+                    break;
                 case "ruleContentUrl":
                     bookSourceBeanN.setRuleContentUrl(sourceEdit.value);
                     break;
@@ -376,45 +378,50 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
                 case "ruleBookContent":
                     bookSourceBeanN.setRuleBookContent(sourceEdit.value);
                     break;
+                case "ruleBookContentReplace":
+                    bookSourceBeanN.setRuleBookContentReplace(sourceEdit.value);
+                    break;
                 case "httpUserAgent":
                     bookSourceBeanN.setHttpUserAgent(sourceEdit.value);
                     break;
             }
         }
-        for (SourceEdit sourceEdit : findEditList) {
-            switch (sourceEdit.getKey()) {
-                case "ruleFindUrl":
-                    bookSourceBeanN.setRuleFindUrl(sourceEdit.value);
-                    break;
-                case "ruleFindList":
-                    bookSourceBeanN.setRuleFindList(sourceEdit.value);
-                    break;
-                case "ruleFindName":
-                    bookSourceBeanN.setRuleFindName(sourceEdit.value);
-                    break;
-                case "ruleFindAuthor":
-                    bookSourceBeanN.setRuleFindAuthor(sourceEdit.value);
-                    break;
-                case "ruleFindKind":
-                    bookSourceBeanN.setRuleFindKind(sourceEdit.value);
-                    break;
-                case "ruleFindIntroduce":
-                    bookSourceBeanN.setRuleFindIntroduce(sourceEdit.value);
-                    break;
-                case "ruleFindLastChapter":
-                    bookSourceBeanN.setRuleFindLastChapter(sourceEdit.value);
-                    break;
-                case "ruleFindCoverUrl":
-                    bookSourceBeanN.setRuleFindCoverUrl(sourceEdit.value);
-                    break;
-                case "ruleFindNoteUrl":
-                    bookSourceBeanN.setRuleFindNoteUrl(sourceEdit.value);
-                    break;
+        if (hasFind) {
+            for (SourceEdit sourceEdit : findEditList) {
+                switch (sourceEdit.getKey()) {
+                    case "ruleFindUrl":
+                        bookSourceBeanN.setRuleFindUrl(sourceEdit.value);
+                        break;
+                    case "ruleFindList":
+                        bookSourceBeanN.setRuleFindList(sourceEdit.value);
+                        break;
+                    case "ruleFindName":
+                        bookSourceBeanN.setRuleFindName(sourceEdit.value);
+                        break;
+                    case "ruleFindAuthor":
+                        bookSourceBeanN.setRuleFindAuthor(sourceEdit.value);
+                        break;
+                    case "ruleFindKind":
+                        bookSourceBeanN.setRuleFindKind(sourceEdit.value);
+                        break;
+                    case "ruleFindIntroduce":
+                        bookSourceBeanN.setRuleFindIntroduce(sourceEdit.value);
+                        break;
+                    case "ruleFindLastChapter":
+                        bookSourceBeanN.setRuleFindLastChapter(sourceEdit.value);
+                        break;
+                    case "ruleFindCoverUrl":
+                        bookSourceBeanN.setRuleFindCoverUrl(sourceEdit.value);
+                        break;
+                    case "ruleFindNoteUrl":
+                        bookSourceBeanN.setRuleFindNoteUrl(sourceEdit.value);
+                        break;
+                }
             }
         }
         bookSourceBeanN.setSerialNumber(serialNumber);
-        bookSourceBeanN.setEnable(cbIsEnable.isChecked());
-        bookSourceBeanN.setBookSourceType(cbIsAudio.isChecked() ? BookType.AUDIO : null);
+        bookSourceBeanN.setEnable(binding.cbIsEnable.isChecked());
+        bookSourceBeanN.setBookSourceType(binding.cbIsAudio.isChecked() ? BookType.AUDIO : null);
         return bookSourceBeanN;
     }
 
@@ -422,7 +429,7 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     private void shareBookSource() {
         Single.create((SingleOnSubscribe<Bitmap>) emitter -> {
             QRCodeEncoder.HINTS.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.L);
-            Bitmap bitmap = QRCodeEncoder.syncEncodeQRCode(getBookSourceStr(), 600);
+            Bitmap bitmap = QRCodeEncoder.syncEncodeQRCode(getBookSourceStr(true), 600);
             QRCodeEncoder.HINTS.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.H);
             emitter.onSuccess(bitmap);
         }).compose(RxUtils::toSimpleSingle)
@@ -466,6 +473,17 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         }
     }
 
+    private void shareText(String title, String text) {
+        try {
+            Intent textIntent = new Intent(Intent.ACTION_SEND);
+            textIntent.setType("text/plain");
+            textIntent.putExtra(Intent.EXTRA_TEXT, text);
+            startActivity(Intent.createChooser(textIntent, title));
+        } catch (Exception e) {
+            toast(R.string.can_not_share, ERROR);
+        }
+    }
+
     //设置ToolBar
     private void setupActionBar() {
         ActionBar actionBar = getSupportActionBar();
@@ -486,76 +504,77 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-        switch (id) {
-            case R.id.action_save:
-                if (canSaveBookSource()) {
-                    mPresenter.saveSource(getBookSource(), bookSourceBean)
-                            .subscribe(new MyObserver<Boolean>() {
-                                @Override
-                                public void onNext(Boolean aBoolean) {
-                                    bookSourceBean = getBookSource();
-                                    toast("保存成功");
-                                    setResult(RESULT_OK);
-                                    finish();
-                                }
+        if (id == R.id.action_save) {
+            if (canSaveBookSource()) {
+                mPresenter.saveSource(getBookSource(true), bookSourceBean)
+                        .subscribe(new MyObserver<Boolean>() {
+                            @Override
+                            public void onNext(Boolean aBoolean) {
+                                bookSourceBean = getBookSource(true);
+                                toast("保存成功");
+                                setResult(RESULT_OK);
+                                finish();
+                            }
 
-                                @Override
-                                public void onError(Throwable e) {
-                                    toast(e.getLocalizedMessage());
-                                }
-                            });
-                }
-                break;
-            case R.id.action_login:
-                if (!isEmpty(getBookSource().getLoginUrl())) {
-                    SourceLoginActivity.startThis(this, getBookSource());
+                            @Override
+                            public void onError(Throwable e) {
+                                toast(e.getLocalizedMessage());
+                            }
+                        });
+            }
+        } else if (id == R.id.action_login) {
+            BookSourceBean bookSourceBean = getBookSource(true);
+            if (!isEmpty(bookSourceBean.getLoginUrl())) {
+                if (isEmpty(bookSourceBean.getLoginUi())) {
+                    SourceLoginActivity.startThis(this, getBookSource(true));
                 } else {
-                    toast(R.string.source_no_login);
+                    SourceLoginDialog.Companion.start(
+                            getSupportFragmentManager(),
+                            bookSourceBean.getBookSourceUrl()
+                    );
                 }
-                break;
-            case R.id.action_copy_source:
-                mPresenter.copySource(getBookSource());
-                break;
-            case R.id.action_paste_source:
-                mPresenter.pasteSource();
-                break;
-            case R.id.action_qr_code_camera:
-                scanBookSource();
-                break;
-            case R.id.action_share_it:
-                shareBookSource();
-                break;
-            case R.id.action_share_wifi:
-                ShareService.startThis(this, Collections.singletonList(getBookSource()));
-                break;
-            case R.id.action_rule_summary:
-                openRuleSummary();
-                break;
-            case R.id.action_debug_source:
-                if (canSaveBookSource()) {
-                    mPresenter.saveSource(getBookSource(), bookSourceBean)
-                            .subscribe(new MyObserver<Boolean>() {
-                                @Override
-                                public void onNext(Boolean aBoolean) {
-                                    bookSourceBean = getBookSource();
-                                    setResult(RESULT_OK);
-                                    SourceDebugActivity.startThis(SourceEditActivity.this, getBookSource().getBookSourceUrl());
-                                }
+            } else {
+                toast(R.string.source_no_login);
+            }
+        } else if (id == R.id.action_copy_source) {
+            mPresenter.copySource(getBookSourceStr(true));
+        } else if (id == R.id.action_copy_source_no_find) {
+            mPresenter.copySource(getBookSourceStr(false));
+        } else if (id == R.id.action_paste_source) {
+            mPresenter.pasteSource();
+        } else if (id == R.id.action_qr_code_camera) {
+            scanBookSource();
+        } else if (id == R.id.action_share_it) {
+            shareBookSource();
+        } else if (id == R.id.action_share_str) {
+            shareText("Source Share", getBookSourceStr(true));
+        } else if (id == R.id.action_share_wifi) {
+            ShareService.startThis(this, Collections.singletonList(getBookSource(true)));
+        } else if (id == R.id.action_rule_summary) {
+            openRuleSummary();
+        } else if (id == R.id.action_debug_source) {
+            if (canSaveBookSource()) {
+                mPresenter.saveSource(getBookSource(true), bookSourceBean)
+                        .subscribe(new MyObserver<Boolean>() {
+                            @Override
+                            public void onNext(Boolean aBoolean) {
+                                bookSourceBean = getBookSource(true);
+                                setResult(RESULT_OK);
+                                SourceDebugActivity.startThis(SourceEditActivity.this, getBookSource(true).getBookSourceUrl());
+                            }
 
-                                @Override
-                                public void onError(Throwable e) {
-                                    toast(e.getLocalizedMessage());
-                                }
-                            });
-                }
-                break;
-            case android.R.id.home:
-                SoftInputUtil.hideIMM(getCurrentFocus());
-                if (back()) {
-                    return true;
-                }
-                finish();
-                break;
+                            @Override
+                            public void onError(Throwable e) {
+                                toast(e.getLocalizedMessage());
+                            }
+                        });
+            }
+        } else if (id == android.R.id.home) {
+            SoftInputUtil.hideIMM(getCurrentFocus());
+            if (back()) {
+                return true;
+            }
+            finish();
         }
         return super.onOptionsItemSelected(item);
     }
@@ -602,11 +621,19 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         return super.onKeyDown(keyCode, keyEvent);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mSoftKeyboardTool != null) {
+            mSoftKeyboardTool.dismiss();
+        }
+    }
+
     private boolean back() {
         if (bookSourceBean == null) {
             bookSourceBean = new BookSourceBean();
         }
-        if (!getBookSource().equals(bookSourceBean)) {
+        if (!getBookSource(true).equals(bookSourceBean)) {
             new AlertDialog.Builder(this)
                     .setTitle(getString(R.string.exit))
                     .setMessage(getString(R.string.exit_no_save))
@@ -619,7 +646,8 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
         return false;
     }
 
-    private void insertTextToEditText(String txt) {
+    @Override
+    public void sendText(@NotNull String txt) {
         if (isEmpty(txt)) return;
         View view = getWindow().getDecorView().findFocus();
         if (view instanceof EditText) {
@@ -641,7 +669,7 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
             return;
         }
         if (mSoftKeyboardTool != null & !this.isFinishing()) {
-            mSoftKeyboardTool.showAtLocation(llContent, Gravity.BOTTOM, 0, 0);
+            mSoftKeyboardTool.showAtLocation(binding.llContent, Gravity.BOTTOM, 0, 0);
         }
     }
 
@@ -662,11 +690,11 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
             boolean preShowing = mIsSoftKeyBoardShowing;
             if (Math.abs(keyboardHeight) > screenHeight / 5) {
                 mIsSoftKeyBoardShowing = true; // 超过屏幕五分之一则表示弹出了输入法
-                recyclerView.setPadding(0, 0, 0, 100);
+                binding.recyclerView.setPadding(0, 0, 0, 100);
                 showKeyboardTopPopupWindow();
             } else {
                 mIsSoftKeyBoardShowing = false;
-                recyclerView.setPadding(0, 0, 0, 0);
+                binding.recyclerView.setPadding(0, 0, 0, 0);
                 if (preShowing) {
                     closePopupWindow();
                 }
@@ -677,7 +705,7 @@ public class SourceEditActivity extends MBaseActivity<SourceEditContract.Present
     public class SourceEdit {
         private String key;
         private String value;
-        private int hint;
+        private final int hint;
 
         SourceEdit(String key, String value, int hint) {
             this.key = key;

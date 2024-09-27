@@ -1,50 +1,34 @@
 package com.kunfei.bookshelf.view.activity;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
-import androidx.appcompat.widget.Toolbar;
 
-import com.google.android.material.appbar.AppBarLayout;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.kunfei.basemvplib.impl.IPresenter;
 import com.kunfei.bookshelf.R;
 import com.kunfei.bookshelf.base.MBaseActivity;
-import com.kunfei.bookshelf.utils.FileUtils;
-import com.kunfei.bookshelf.utils.PermissionUtils;
+import com.kunfei.bookshelf.databinding.ActivityQrcodeCaptureBinding;
+import com.kunfei.bookshelf.help.permission.Permissions;
+import com.kunfei.bookshelf.help.permission.PermissionsCompat;
+import com.kunfei.bookshelf.utils.RealPathUtil;
+import com.kunfei.bookshelf.widget.filepicker.picker.FilePicker;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
 import cn.bingoogolapple.qrcode.core.QRCodeView;
-import cn.bingoogolapple.qrcode.zxing.ZXingView;
-import cn.qqtheme.framework.picker.FilePicker;
+import kotlin.Unit;
 
 /**
  * Created by GKF on 2018/1/29.
  */
 
-public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Delegate {
+public class QRCodeScanActivity extends MBaseActivity<IPresenter> implements QRCodeView.Delegate {
 
-    @BindView(R.id.zxingview)
-    ZXingView zxingview;
-    @BindView(R.id.toolbar)
-    Toolbar toolbar;
-    @BindView(R.id.action_bar)
-    AppBarLayout actionBar;
-    @BindView(R.id.fab_flashlight)
-    FloatingActionButton fabFlashlight;
-
+    private ActivityQrcodeCaptureBinding binding;
     private final int REQUEST_QR_IMAGE = 202;
-    private final int REQUEST_CAMERA_PER = 303;
-    private final String[] cameraPer = new String[]{Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE};
     private boolean flashlightIsOpen;
 
     @Override
@@ -65,9 +49,9 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
      */
     @Override
     protected void onCreateActivity() {
-        setContentView(R.layout.activity_qrcode_capture);
-        ButterKnife.bind(this);
-        this.setSupportActionBar(toolbar);
+        binding = ActivityQrcodeCaptureBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+        this.setSupportActionBar(binding.toolbar);
         setupActionBar();
     }
 
@@ -76,14 +60,14 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
      */
     @Override
     protected void initData() {
-        zxingview.setDelegate(this);
-        fabFlashlight.setOnClickListener(view -> {
+        binding.zxingview.setDelegate(this);
+        binding.fabFlashlight.setOnClickListener(view -> {
             if (flashlightIsOpen) {
                 flashlightIsOpen = false;
-                zxingview.closeFlashlight();
+                binding.zxingview.closeFlashlight();
             } else {
                 flashlightIsOpen = true;
-                zxingview.openFlashlight();
+                binding.zxingview.openFlashlight();
             }
         });
     }
@@ -95,34 +79,26 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
     }
 
     private void startCamera() {
-        PermissionUtils.checkMorePermissions(this, cameraPer, new PermissionUtils.PermissionCheckCallback() {
-            @Override
-            public void onHasPermission() {
-                zxingview.setVisibility(View.VISIBLE);
-                zxingview.startSpotAndShowRect(); // 显示扫描框，并开始识别
-            }
-
-            @Override
-            public void onUserHasAlreadyTurnedDown(String... permission) {
-                Toast.makeText(QRCodeScanActivity.this, R.string.qr_per, Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onAlreadyTurnedDownAndNoAsk(String... permission) {
-                PermissionUtils.requestMorePermissions(QRCodeScanActivity.this, cameraPer, REQUEST_CAMERA_PER);
-            }
-        });
+        new PermissionsCompat.Builder(this)
+                .addPermissions(Permissions.CAMERA)
+                .rationale(R.string.qr_per)
+                .onGranted((requestCode) -> {
+                    binding.zxingview.setVisibility(View.VISIBLE);
+                    binding.zxingview.startSpotAndShowRect(); // 显示扫描框，并开始识别
+                    return Unit.INSTANCE;
+                })
+                .request();
     }
 
     @Override
     protected void onStop() {
-        zxingview.stopCamera(); // 关闭摄像头预览，并且隐藏扫描框
+        binding.zxingview.stopCamera(); // 关闭摄像头预览，并且隐藏扫描框
         super.onStop();
     }
 
     @Override
     protected void onDestroy() {
-        zxingview.onDestroy(); // 销毁二维码扫描控件
+        binding.zxingview.onDestroy(); // 销毁二维码扫描控件
         super.onDestroy();
     }
 
@@ -142,27 +118,6 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
     @Override
     public void onScanQRCodeOpenCameraError() {
 
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        PermissionUtils.checkMorePermissions(QRCodeScanActivity.this, cameraPer, new PermissionUtils.PermissionCheckCallback() {
-            @Override
-            public void onHasPermission() {
-                startCamera();
-            }
-
-            @Override
-            public void onUserHasAlreadyTurnedDown(String... permission) {
-                Toast.makeText(QRCodeScanActivity.this, R.string.qr_per, Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onAlreadyTurnedDownAndNoAsk(String... permission) {
-                PermissionUtils.toAppSetting(QRCodeScanActivity.this);
-            }
-        });
     }
 
     //设置ToolBar
@@ -185,13 +140,17 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
-        switch (id) {
-            case R.id.action_choose_from_gallery:
-                chooseFromGallery();
-                break;
-            case android.R.id.home:
-                finish();
-                break;
+        if (id == R.id.action_choose_from_gallery) {
+            new PermissionsCompat.Builder(this)
+                    .addPermissions(Permissions.READ_EXTERNAL_STORAGE, Permissions.WRITE_EXTERNAL_STORAGE)
+                    .rationale(R.string.get_storage_per)
+                    .onGranted((requestCode) -> {
+                        chooseFromGallery();
+                        return Unit.INSTANCE;
+                    })
+                    .request();
+        } else if (id == android.R.id.home) {
+            finish();
         }
         return super.onOptionsItemSelected(item);
     }
@@ -200,12 +159,12 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        zxingview.startSpotAndShowRect(); // 显示扫描框，并开始识别
+        binding.zxingview.startSpotAndShowRect(); // 显示扫描框，并开始识别
 
         if (resultCode == Activity.RESULT_OK && requestCode == REQUEST_QR_IMAGE) {
-            final String picturePath = FileUtils.getPath(this, data.getData());
+            final String picturePath = RealPathUtil.getPath(this, data.getData());
             // 本来就用到 QRCodeView 时可直接调 QRCodeView 的方法，走通用的回调
-            zxingview.decodeQRCode(picturePath);
+            binding.zxingview.decodeQRCode(picturePath);
         }
     }
 
@@ -220,7 +179,7 @@ public class QRCodeScanActivity extends MBaseActivity implements QRCodeView.Dele
             picker.setBackgroundColor(getResources().getColor(R.color.background));
             picker.setTopBackgroundColor(getResources().getColor(R.color.background));
             picker.setItemHeight(30);
-            picker.setOnFilePickListener(currentPath -> zxingview.decodeQRCode(currentPath));
+            picker.setOnFilePickListener(currentPath -> binding.zxingview.decodeQRCode(currentPath));
             picker.show();
         }
     }

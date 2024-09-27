@@ -1,19 +1,18 @@
 package com.kunfei.bookshelf.view.fragment;
 
+import static android.app.Activity.RESULT_OK;
+
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.PointF;
 import android.os.Bundle;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.LinearLayout;
 import android.widget.PopupMenu;
-import android.widget.RelativeLayout;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -21,7 +20,6 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.kunfei.bookshelf.MApplication;
 import com.kunfei.bookshelf.R;
@@ -30,9 +28,11 @@ import com.kunfei.bookshelf.base.observer.MySingleObserver;
 import com.kunfei.bookshelf.bean.BookSourceBean;
 import com.kunfei.bookshelf.bean.FindKindBean;
 import com.kunfei.bookshelf.bean.FindKindGroupBean;
+import com.kunfei.bookshelf.databinding.FragmentBookFindBinding;
 import com.kunfei.bookshelf.model.BookSourceManager;
 import com.kunfei.bookshelf.presenter.FindBookPresenter;
 import com.kunfei.bookshelf.presenter.contract.FindBookContract;
+import com.kunfei.bookshelf.utils.ACache;
 import com.kunfei.bookshelf.utils.theme.ThemeStore;
 import com.kunfei.bookshelf.view.activity.ChoiceBookActivity;
 import com.kunfei.bookshelf.view.activity.SourceEditActivity;
@@ -46,31 +46,13 @@ import com.kunfei.bookshelf.widget.recycler.sectioned.SectionedSpanSizeLookup;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
-import butterknife.Unbinder;
+public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> implements FindBookContract.View,
+        OnRecyclerViewListener.OnItemClickListener,
+        OnRecyclerViewListener.OnItemLongClickListener {
 
-import static android.app.Activity.RESULT_OK;
 
-public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> implements FindBookContract.View, OnRecyclerViewListener.OnItemClickListener, OnRecyclerViewListener.OnItemLongClickListener {
-    @BindView(R.id.ll_content)
-    LinearLayout llContent;
-    @BindView(R.id.refresh_layout)
-    SwipeRefreshLayout refreshLayout;
-    @BindView(R.id.tv_empty)
-    TextView tvEmpty;
-    @BindView(R.id.rl_empty_view)
-    RelativeLayout rlEmptyView;
-    @BindView(R.id.rv_find_left)
-    RecyclerView rvFindLeft;
-    @BindView(R.id.rv_find_right)
-    RecyclerView rvFindRight;
-    @BindView(R.id.vw_divider)
-    View vwDivider;
-
-    private Unbinder unbinder;
+    private FragmentBookFindBinding binding;
     private FindLeftAdapter findLeftAdapter;
     private FindRightAdapter findRightAdapter;
     private FindKindAdapter findKindAdapter;
@@ -79,8 +61,9 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     private List<RecyclerViewData> data = new ArrayList<>();
 
     @Override
-    public int createLayoutId() {
-        return R.layout.fragment_book_find;
+    protected View createView(LayoutInflater inflater, ViewGroup container) {
+        binding = FragmentBookFindBinding.inflate(inflater, container, false);
+        return binding.getRoot();
     }
 
     @Override
@@ -96,12 +79,11 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     @Override
     protected void bindView() {
         super.bindView();
-        unbinder = ButterKnife.bind(this, view);
-        rvFindRight.addItemDecoration(new GridSpacingItemDecoration(10));
-        refreshLayout.setColorSchemeColors(ThemeStore.accentColor(MApplication.getInstance()));
-        refreshLayout.setOnRefreshListener(() -> {
+        binding.rvFindRight.addItemDecoration(new GridSpacingItemDecoration(10));
+        binding.refreshLayout.setColorSchemeColors(ThemeStore.accentColor(MApplication.getInstance()));
+        binding.refreshLayout.setOnRefreshListener(() -> {
             refreshData();
-            refreshLayout.setRefreshing(false);
+            binding.refreshLayout.setRefreshing(false);
         });
         leftLayoutManager = new LinearLayoutManager(getContext());
         initRecyclerView();
@@ -130,7 +112,7 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     }
 
     public void upStyle() {
-        if (rlEmptyView == null) return;
+        if (binding.emptyView.rlEmptyView == null) return;
         initRecyclerView();
         if (isFlexBox()) {
             findRightAdapter.setData(data);
@@ -142,21 +124,21 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     }
 
     public void upUI() {
-        if (rlEmptyView == null) return;
+        if (binding.emptyView.rlEmptyView == null) return;
         if (data.size() == 0) {
-            tvEmpty.setText(R.string.no_find);
-            rlEmptyView.setVisibility(View.VISIBLE);
+            binding.emptyView.tvEmpty.setText(R.string.no_find);
+            binding.emptyView.rlEmptyView.setVisibility(View.VISIBLE);
         } else {
-            rlEmptyView.setVisibility(View.GONE);
+            binding.emptyView.rlEmptyView.setVisibility(View.GONE);
         }
         if (isFlexBox()) {
-            rlEmptyView.setVisibility(View.GONE);
+            binding.emptyView.rlEmptyView.setVisibility(View.GONE);
             if (data.size() <= 1 | !showLeftView()) {
-                rvFindLeft.setVisibility(View.GONE);
-                vwDivider.setVisibility(View.GONE);
+                binding.rvFindLeft.setVisibility(View.GONE);
+                binding.vwDivider.setVisibility(View.GONE);
             } else {
-                rvFindLeft.setVisibility(View.VISIBLE);
-                vwDivider.setVisibility(View.VISIBLE);
+                binding.rvFindLeft.setVisibility(View.VISIBLE);
+                binding.vwDivider.setVisibility(View.VISIBLE);
             }
         }
     }
@@ -170,7 +152,7 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     }
 
     private void initRecyclerView() {
-        if (rvFindRight == null) return;
+        if (binding.rvFindRight == null) return;
         if (isFlexBox()) {
             findKindAdapter = null;
             findLeftAdapter = new FindLeftAdapter(getActivity(), pos -> {
@@ -181,31 +163,31 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
                 }
                 ((ScrollLinearLayoutManger) rightLayoutManager).scrollToPositionWithOffset(counts + pos, 0);
             });
-            rvFindLeft.setLayoutManager(leftLayoutManager);
-            rvFindLeft.setAdapter(findLeftAdapter);
+            binding.rvFindLeft.setLayoutManager(leftLayoutManager);
+            binding.rvFindLeft.setAdapter(findLeftAdapter);
 
-            findRightAdapter = new FindRightAdapter(Objects.requireNonNull(getActivity()), this);
+            findRightAdapter = new FindRightAdapter(requireActivity(), this);
             //设置header
             rightLayoutManager = new ScrollLinearLayoutManger(getActivity(), 3);
             ((ScrollLinearLayoutManger) rightLayoutManager).setSpanSizeLookup(new SectionedSpanSizeLookup(findRightAdapter, (ScrollLinearLayoutManger) rightLayoutManager));
-            rvFindRight.setLayoutManager(rightLayoutManager);
-            rvFindRight.setLayoutManager(rightLayoutManager);
-            rvFindRight.setItemViewCacheSize(10);
-            rvFindRight.setItemAnimator(null);
-            rvFindRight.setHasFixedSize(true);
-            rvFindRight.setAdapter(findRightAdapter);
+            binding.rvFindRight.setLayoutManager(rightLayoutManager);
+            binding.rvFindRight.setLayoutManager(rightLayoutManager);
+            binding.rvFindRight.setItemViewCacheSize(10);
+            binding.rvFindRight.setItemAnimator(null);
+            binding.rvFindRight.setHasFixedSize(true);
+            binding.rvFindRight.setAdapter(findRightAdapter);
         } else {
             rightLayoutManager = new LinearLayoutManager(getContext());
-            rvFindLeft.setVisibility(View.GONE);
-            vwDivider.setVisibility(View.GONE);
+            binding.rvFindLeft.setVisibility(View.GONE);
+            binding.vwDivider.setVisibility(View.GONE);
             findLeftAdapter = null;
             findRightAdapter = null;
             findKindAdapter = new FindKindAdapter(getContext(), new ArrayList<>());
             findKindAdapter.setOnItemClickListener(this);
             findKindAdapter.setOnItemLongClickListener(this);
             findKindAdapter.setCanExpandAll(false);
-            rvFindRight.setLayoutManager(rightLayoutManager);
-            rvFindRight.setAdapter(findKindAdapter);
+            binding.rvFindRight.setLayoutManager(rightLayoutManager);
+            binding.rvFindRight.setAdapter(findKindAdapter);
         }
     }
 
@@ -239,13 +221,15 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
             return;
         }
         PopupMenu popupMenu = new PopupMenu(getContext(), view);
-        popupMenu.getMenu().add(R.string.edit);
-        popupMenu.getMenu().add(R.string.to_top);
-        popupMenu.getMenu().add(R.string.delete);
+        popupMenu.getMenu().add(Menu.NONE, R.id.menu_edit, Menu.NONE, R.string.edit);
+        popupMenu.getMenu().add(Menu.NONE, R.id.menu_top, Menu.NONE, R.string.to_top);
+        popupMenu.getMenu().add(Menu.NONE, R.id.menu_del, Menu.NONE, R.string.delete);
+        popupMenu.getMenu().add(Menu.NONE, R.id.menu_clear, Menu.NONE, R.string.clear_cache);
         popupMenu.setOnMenuItemClickListener(item -> {
-            if (item.getTitle().equals(getString(R.string.edit))) {
+            int itemId = item.getItemId();
+            if (itemId == R.id.menu_edit) {
                 SourceEditActivity.startThis(this, sourceBean);
-            } else if (item.getTitle().equals(getString(R.string.to_top))) {
+            } else if (itemId == R.id.menu_top) {
                 BookSourceManager.toTop(sourceBean)
                         .subscribe(new MySingleObserver<Boolean>() {
                             @Override
@@ -253,9 +237,11 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
                                 refreshData();
                             }
                         });
-            } else if (item.getTitle().equals(getString(R.string.delete))) {
+            } else if (itemId == R.id.menu_del) {
                 BookSourceManager.removeBookSource(sourceBean);
                 refreshData();
+            } else if (itemId == R.id.menu_clear) {
+                ACache.get(getActivity(), "findCache").remove(sourceBean.getBookSourceUrl());
             }
             return true;
         });
@@ -271,7 +257,7 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        unbinder.unbind();
+        binding = null;
     }
 
     @Override
@@ -285,7 +271,7 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
     }
 
     @SuppressWarnings("unused")
-    public class ScrollLinearLayoutManger extends GridLayoutManager {
+    public static class ScrollLinearLayoutManger extends GridLayoutManager {
 
         public ScrollLinearLayoutManger(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
             super(context, attrs, defStyleAttr, defStyleRes);
@@ -301,8 +287,6 @@ public class FindBookFragment extends MBaseFragment<FindBookContract.Presenter> 
 
         @Override
         public void smoothScrollToPosition(RecyclerView recyclerView, RecyclerView.State state, int position) {
-            Log.e("linksu",
-                    "smoothScrollToPosition(ScrollSpeedLinearLayoutManger.java:62)");
             RecyclerView.SmoothScroller smoothScroller = new CenterSmoothScroller(recyclerView.getContext());
             smoothScroller.setTargetPosition(position);
             startSmoothScroll(smoothScroller);

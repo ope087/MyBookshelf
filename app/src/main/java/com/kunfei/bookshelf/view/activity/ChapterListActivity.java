@@ -1,5 +1,9 @@
 package com.kunfei.bookshelf.view.activity;
 
+import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
+
+import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -9,7 +13,6 @@ import android.view.MenuItem;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.widget.SearchView;
-import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 
 import com.hwangjr.rxbus.RxBus;
@@ -17,11 +20,11 @@ import com.kunfei.basemvplib.BitIntentDataManager;
 import com.kunfei.basemvplib.impl.IPresenter;
 import com.kunfei.bookshelf.R;
 import com.kunfei.bookshelf.base.BaseTabActivity;
-import com.kunfei.bookshelf.base.MBaseActivity;
 import com.kunfei.bookshelf.bean.BookChapterBean;
 import com.kunfei.bookshelf.bean.BookShelfBean;
+import com.kunfei.bookshelf.databinding.ActivityChapterlistBinding;
 import com.kunfei.bookshelf.help.ReadBookControl;
-import com.kunfei.bookshelf.utils.ColorUtil;
+import com.kunfei.bookshelf.utils.ColorUtils;
 import com.kunfei.bookshelf.utils.theme.ATH;
 import com.kunfei.bookshelf.utils.theme.MaterialValueHelper;
 import com.kunfei.bookshelf.utils.theme.ThemeStore;
@@ -31,23 +34,15 @@ import com.kunfei.bookshelf.view.fragment.ChapterListFragment;
 import java.util.Arrays;
 import java.util.List;
 
-import butterknife.BindView;
-import butterknife.ButterKnife;
+public class ChapterListActivity extends BaseTabActivity<IPresenter> {
 
-import static android.view.View.GONE;
-import static android.view.View.VISIBLE;
-
-public class ChapterListActivity extends BaseTabActivity {
-
-    @BindView(R.id.toolbar)
-    Toolbar toolbar;
-
+    private ActivityChapterlistBinding binding;
     private ReadBookControl readBookControl = ReadBookControl.getInstance();
     private SearchView searchView;
     private BookShelfBean bookShelf;
     private List<BookChapterBean> chapterBeanList;
 
-    public static void startThis(MBaseActivity activity, BookShelfBean bookShelf, List<BookChapterBean> chapterBeanList) {
+    public static void startThis(Activity activity, BookShelfBean bookShelf, List<BookChapterBean> chapterBeanList) {
         Intent intent = new Intent(activity, ChapterListActivity.class);
         String key = String.valueOf(System.currentTimeMillis());
         String bookKey = "book" + key;
@@ -94,11 +89,16 @@ public class ChapterListActivity extends BaseTabActivity {
     @Override
     protected void onCreateActivity() {
         getWindow().getDecorView().setBackgroundColor(ThemeStore.backgroundColor(this));
-        setContentView(R.layout.activity_chapterlist);
-        ButterKnife.bind(this);
+        binding = ActivityChapterlistBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
         setupActionBar();
+    }
+
+    @Override
+    protected void bindView() {
+        super.bindView();
         mTlIndicator.setSelectedTabIndicatorColor(ThemeStore.accentColor(this));
-        mTlIndicator.setTabTextColors(ColorUtil.isColorLight(ThemeStore.primaryColor(this)) ? Color.BLACK : Color.WHITE,
+        mTlIndicator.setTabTextColors(ColorUtils.isColorLight(ThemeStore.primaryColor(this)) ? Color.BLACK : Color.WHITE,
                 ThemeStore.accentColor(this));
     }
 
@@ -129,7 +129,7 @@ public class ChapterListActivity extends BaseTabActivity {
         getMenuInflater().inflate(R.menu.menu_search_view, menu);
         MenuItem search = menu.findItem(R.id.action_search);
         searchView = (SearchView) search.getActionView();
-        ATH.setTint(searchView, MaterialValueHelper.getPrimaryTextColor(this, ColorUtil.isColorLight(ThemeStore.primaryColor(this))));
+        ATH.setTint(searchView, MaterialValueHelper.getPrimaryTextColor(this, ColorUtils.isColorLight(ThemeStore.primaryColor(this))));
         searchView.setMaxWidth(getResources().getDisplayMetrics().widthPixels);
         searchView.onActionViewCollapsed();
         searchView.setOnCloseListener(() -> {
@@ -175,7 +175,7 @@ public class ChapterListActivity extends BaseTabActivity {
 
     //设置ToolBar
     private void setupActionBar() {
-        setSupportActionBar(toolbar);
+        setSupportActionBar(binding.toolbar);
         ActionBar actionBar = getSupportActionBar();
         if (actionBar != null) {
             actionBar.setDisplayHomeAsUpEnabled(true);

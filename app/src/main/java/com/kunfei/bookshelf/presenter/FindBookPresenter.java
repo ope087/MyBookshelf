@@ -1,7 +1,9 @@
 //Copyright (c) 2017. 章钦豪. All rights reserved.
 package com.kunfei.bookshelf.presenter;
 
-import android.text.TextUtils;
+import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
+
+import android.util.Pair;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -29,11 +31,10 @@ import io.reactivex.SingleObserver;
 import io.reactivex.SingleOnSubscribe;
 import io.reactivex.disposables.Disposable;
 
-import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
-
 public class FindBookPresenter extends BasePresenterImpl<FindBookContract.View> implements FindBookContract.Presenter {
     private Disposable disposable;
     private AnalyzeRule analyzeRule;
+    private String findError = "发现规则语法错误";
 
     @SuppressWarnings("unchecked")
     @Override
@@ -45,45 +46,9 @@ public class FindBookPresenter extends BasePresenterImpl<FindBookContract.View> 
             boolean showAllFind = MApplication.getConfigPreferences().getBoolean("showAllFind", true);
             List<BookSourceBean> sourceBeans = new ArrayList<>(showAllFind ? BookSourceManager.getAllBookSourceBySerialNumber() : BookSourceManager.getSelectedBookSourceBySerialNumber());
             for (BookSourceBean sourceBean : sourceBeans) {
-                try {
-                    String[] kindA;
-                    String findRule;
-                    if (!TextUtils.isEmpty(sourceBean.getRuleFindUrl())) {
-                        boolean isJsAndCache = sourceBean.getRuleFindUrl().startsWith("<js>");
-                        if (isJsAndCache) {
-                            findRule = aCache.getAsString(sourceBean.getBookSourceUrl());
-                            if (TextUtils.isEmpty(findRule)) {
-                                String jsStr = sourceBean.getRuleFindUrl().substring(4, sourceBean.getRuleFindUrl().lastIndexOf("<"));
-                                findRule = evalJS(jsStr, sourceBean.getBookSourceUrl()).toString();
-                            } else {
-                                isJsAndCache = false;
-                            }
-                        } else {
-                            findRule = sourceBean.getRuleFindUrl();
-                        }
-                        kindA = findRule.split("(&&|\n)+");
-                        List<FindKindBean> children = new ArrayList<>();
-                        for (String kindB : kindA) {
-                            if (kindB.trim().isEmpty()) continue;
-                            String[] kind = kindB.split("::");
-                            FindKindBean findKindBean = new FindKindBean();
-                            findKindBean.setGroup(sourceBean.getBookSourceName());
-                            findKindBean.setTag(sourceBean.getBookSourceUrl());
-                            findKindBean.setKindName(kind[0]);
-                            findKindBean.setKindUrl(kind[1]);
-                            children.add(findKindBean);
-                        }
-                        FindKindGroupBean groupBean = new FindKindGroupBean();
-                        groupBean.setGroupName(sourceBean.getBookSourceName());
-                        groupBean.setGroupTag(sourceBean.getBookSourceUrl());
-                        group.add(new RecyclerViewData(groupBean, children, false));
-                        if (isJsAndCache) {
-                            aCache.put(sourceBean.getBookSourceUrl(), findRule);
-                        }
-                    }
-                } catch (Exception exception) {
-                    sourceBean.addGroup("发现规则语法错误");
-                    BookSourceManager.addBookSource(sourceBean);
+                Pair<FindKindGroupBean, List<FindKindBean>> pair = sourceBean.getFindList();
+                if (pair != null) {
+                    group.add(new RecyclerViewData(pair.first, pair.second, false));
                 }
             }
             e.onSuccess(group);
@@ -104,6 +69,7 @@ public class FindBookPresenter extends BasePresenterImpl<FindBookContract.View> 
 
                     @Override
                     public void onError(Throwable e) {
+                        e.printStackTrace();
                         Toast.makeText(mView.getContext(), e.getMessage(), Toast.LENGTH_SHORT).show();
                         disposable.dispose();
                         disposable = null;
@@ -114,18 +80,11 @@ public class FindBookPresenter extends BasePresenterImpl<FindBookContract.View> 
     /**
      * 执行JS
      */
-    private Object evalJS(String jsStr, String baseUrl) throws Exception {
+    private Object evalJS(String jsStr, String baseUrl, BookSourceBean bookSourceBean) throws Exception {
         SimpleBindings bindings = new SimpleBindings();
-        bindings.put("java", getAnalyzeRule());
+        bindings.put("java", new AnalyzeRule(null, bookSourceBean));
         bindings.put("baseUrl", baseUrl);
         return SCRIPT_ENGINE.eval(jsStr, bindings);
-    }
-
-    private AnalyzeRule getAnalyzeRule() {
-        if (analyzeRule == null) {
-            analyzeRule = new AnalyzeRule(null);
-        }
-        return analyzeRule;
     }
 
     @Override

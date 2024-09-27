@@ -1,5 +1,7 @@
 package com.kunfei.bookshelf.model.task;
 
+import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
+
 import android.text.TextUtils;
 
 import com.kunfei.bookshelf.DbHelper;
@@ -20,8 +22,6 @@ import io.reactivex.Observer;
 import io.reactivex.Scheduler;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
-
-import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
 
 public class CheckSourceTask {
 
@@ -78,7 +78,7 @@ public class CheckSourceTask {
                 if (!TextUtils.isEmpty(sourceBean.getRuleFindUrl())) {
                     if (sourceBean.getRuleFindUrl().startsWith("<js>")) {
                         String jsStr = sourceBean.getRuleFindUrl().substring(4, sourceBean.getRuleFindUrl().lastIndexOf("<"));
-                        Object object = evalJS(jsStr, sourceBean.getBookSourceUrl());
+                        Object object = evalJS(jsStr, sourceBean.getBookSourceUrl(), sourceBean);
                         kindA = object.toString().split("(&&|\n)+");
                     } else {
                         kindA = sourceBean.getRuleFindUrl().split("(&&|\n)+");
@@ -139,9 +139,9 @@ public class CheckSourceTask {
     /**
      * 执行JS
      */
-    private Object evalJS(String jsStr, String baseUrl) throws Exception {
+    private Object evalJS(String jsStr, String baseUrl, BookSourceBean bookSourceBean) throws Exception {
         SimpleBindings bindings = new SimpleBindings();
-        bindings.put("java", new AnalyzeRule(null));
+        bindings.put("java", new AnalyzeRule(null, bookSourceBean));
         bindings.put("baseUrl", baseUrl);
         return SCRIPT_ENGINE.eval(jsStr, bindings);
     }

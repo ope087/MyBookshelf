@@ -1,11 +1,19 @@
 package com.kunfei.bookshelf.model.analyzeRule;
 
+import static com.kunfei.bookshelf.constant.AppConstant.EXP_PATTERN;
+import static com.kunfei.bookshelf.constant.AppConstant.JS_PATTERN;
+import static com.kunfei.bookshelf.constant.AppConstant.MAP_STRING;
+import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
+import static com.kunfei.bookshelf.utils.NetworkUtils.headerPattern;
+
 import android.annotation.SuppressLint;
 import android.text.TextUtils;
 
 import androidx.annotation.Keep;
 
 import com.google.gson.Gson;
+import com.kunfei.bookshelf.bean.BookSourceBean;
+import com.kunfei.bookshelf.help.JsExtensions;
 import com.kunfei.bookshelf.utils.NetworkUtils;
 import com.kunfei.bookshelf.utils.StringUtils;
 import com.kunfei.bookshelf.utils.UrlEncoderUtils;
@@ -13,6 +21,7 @@ import com.kunfei.bookshelf.utils.UrlEncoderUtils;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,55 +30,69 @@ import java.util.regex.Pattern;
 
 import javax.script.SimpleBindings;
 
-import static com.kunfei.bookshelf.constant.AppConstant.EXP_PATTERN;
-import static com.kunfei.bookshelf.constant.AppConstant.JS_PATTERN;
-import static com.kunfei.bookshelf.constant.AppConstant.MAP_STRING;
-import static com.kunfei.bookshelf.constant.AppConstant.SCRIPT_ENGINE;
-import static com.kunfei.bookshelf.utils.NetworkUtils.headerPattern;
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
 
 /**
  * Created by GKF on 2018/1/24.
  * 搜索URL规则解析
  */
 @Keep
-public class AnalyzeUrl {
-    private static final Pattern pagePattern = Pattern.compile("\\{(.*?)\\}");
+public class AnalyzeUrl implements JsExtensions {
+    private static final Pattern pagePattern = Pattern.compile("(?<!@)\\{(.*?)\\}");
+    private final BookSourceBean bookSource;
     private String baseUrl;
+    private String ruleUrl;
     private String url;
     private String host;
     private String urlPath;
     private String queryStr;
-    private Map<String, String> queryMap = new HashMap<>();
-    private Map<String, String> headerMap = new HashMap<>();
+    private final Map<String, String> queryMap = new LinkedHashMap<>();
+    private final Map<String, String> headerMap = new HashMap<>();
     private String charCode = null;
     private UrlMode urlMode = UrlMode.DEFAULT;
+    private String jsonBody = null;
+    private final String searchKey;
+    private final int searchPage;
 
-    public AnalyzeUrl(String urlRule) throws Exception {
-        this(urlRule, null, null, null, null);
+    public AnalyzeUrl(String urlRule, Map<String, String> headerMap) throws Exception {
+        this(urlRule, null, headerMap);
     }
 
-    public AnalyzeUrl(String urlRule, Map<String, String> headerMapF, String baseUrl) throws Exception {
-        this(urlRule, null, null, headerMapF, baseUrl);
+    public AnalyzeUrl(String urlRule, String baseUrl, Map<String, String> headerMap) throws Exception {
+        this(urlRule, baseUrl, null, headerMap);
+    }
+
+    public AnalyzeUrl(String urlRule, String baseUrl, BookSourceBean bookSource, Map<String, String> headerMap) throws Exception {
+        this(urlRule, baseUrl, bookSource, null, 1, headerMap);
     }
 
     @SuppressLint("DefaultLocale")
-    public AnalyzeUrl(String ruleUrl, final String key, final Integer page, Map<String, String> headerMapF, String baseUrl) throws Exception {
+    public AnalyzeUrl(String urlRule, String baseUrl, BookSourceBean bookSource, final String key, final int page, Map<String, String> headerMap) throws Exception {
         if (!TextUtils.isEmpty(baseUrl)) {
             this.baseUrl = headerPattern.matcher(baseUrl).replaceAll("");
         }
-        //解析Header
-        ruleUrl = analyzeHeader(ruleUrl, headerMapF);
+        this.bookSource = bookSource;
+        this.searchKey = key;
+        this.searchPage = page;
+        ruleUrl = urlRule;
         //替换关键字
         if (!StringUtils.isTrimEmpty(key)) {
-            ruleUrl = ruleUrl.replace("searchKey", key);
+            // 处理searchKey=searchKey的情况
+            if (ruleUrl.matches("=[\\s{(]*searchKey"))
+                ruleUrl = ruleUrl.replaceFirst("=[\\s{(]*searchKey", "=" + key);
+            else
+                ruleUrl = ruleUrl.replace("searchKey", key);
         }
-        //分离编码规则
-        ruleUrl = splitCharCode(ruleUrl);
         //判断是否有下一页
-        if (page != null && page > 1 && !ruleUrl.contains("searchPage"))
+        if (page > 1 && !ruleUrl.contains("searchPage"))
             throw new Exception("没有下一页");
         //替换js
-        ruleUrl = replaceJs(ruleUrl, baseUrl, page, key);
+        ruleUrl = replaceJs(ruleUrl);
+        //解析Header
+        ruleUrl = analyzeHeader(ruleUrl, headerMap);
+        //分离编码规则
+        ruleUrl = splitCharCode(ruleUrl);
         //设置页数
         ruleUrl = analyzePage(ruleUrl, page);
         //执行规则列表
@@ -77,6 +100,9 @@ public class AnalyzeUrl {
         for (String rule : ruleList) {
             if (rule.startsWith("<js>")) {
                 rule = rule.substring(4, rule.lastIndexOf("<"));
+                ruleUrl = (String) evalJS(rule, ruleUrl);
+            } else if (rule.startsWith("@js:")) {
+                rule = rule.substring(4);
                 ruleUrl = (String) evalJS(rule, ruleUrl);
             } else {
                 ruleUrl = rule.replace("@result", ruleUrl);
@@ -94,8 +120,14 @@ public class AnalyzeUrl {
             }
         }
         generateUrlPath(ruleUrlS[0]);
-        if (urlMode != UrlMode.DEFAULT) {
+        if (urlMode == UrlMode.GET) {
             analyzeQuery(ruleUrlS[1]);
+        } else if (urlMode == UrlMode.POST) {
+            if (StringUtils.isJsonType(ruleUrlS[1])) {
+                jsonBody = ruleUrlS[1];
+            } else {
+                analyzeQuery(ruleUrlS[1]);
+            }
         }
     }
 
@@ -162,18 +194,13 @@ public class AnalyzeUrl {
      * 替换js
      */
     @SuppressLint("DefaultLocale")
-    private String replaceJs(String ruleUrl, String baseUrl, Integer searchPage, String searchKey) throws Exception {
+    private String replaceJs(String ruleUrl) throws Exception {
         if (ruleUrl.contains("{{") && ruleUrl.contains("}}")) {
             Object jsEval;
             StringBuffer sb = new StringBuffer(ruleUrl.length());
-            SimpleBindings simpleBindings = new SimpleBindings() {{
-                this.put("baseUrl", baseUrl);
-                this.put("searchPage", searchPage);
-                this.put("searchKey", searchKey);
-            }};
             Matcher expMatcher = EXP_PATTERN.matcher(ruleUrl);
             while (expMatcher.find()) {
-                jsEval = SCRIPT_ENGINE.eval(expMatcher.group(1), simpleBindings);
+                jsEval = evalJS(expMatcher.group(1), ruleUrl);
                 if (jsEval instanceof String) {
                     expMatcher.appendReplacement(sb, (String) jsEval);
                 } else if (jsEval instanceof Double && ((Double) jsEval) % 1.0 == 0) {
@@ -252,8 +279,17 @@ public class AnalyzeUrl {
      */
     private Object evalJS(String jsStr, Object result) throws Exception {
         SimpleBindings bindings = new SimpleBindings();
+        bindings.put("java", this);
+        bindings.put("baseUrl", baseUrl);
+        bindings.put("searchPage", searchPage);
+        bindings.put("searchKey", searchKey);
+        bindings.put("source", bookSource);
         bindings.put("result", result);
         return SCRIPT_ENGINE.eval(jsStr, bindings);
+    }
+
+    public String getCharCode() {
+        return charCode;
     }
 
     public String getHost() {
@@ -262,6 +298,10 @@ public class AnalyzeUrl {
 
     public String getPath() {
         return urlPath;
+    }
+
+    public String getRuleUrl() {
+        return ruleUrl;
     }
 
     public String getUrl() {
@@ -280,6 +320,10 @@ public class AnalyzeUrl {
         return queryStr;
     }
 
+    public String getJsonBody() {
+        return jsonBody;
+    }
+
     public byte[] getPostData() {
         StringBuilder builder = new StringBuilder();
         Set<String> keys = queryMap.keySet();
@@ -288,6 +332,11 @@ public class AnalyzeUrl {
         }
         builder.deleteCharAt(builder.lastIndexOf("&"));
         return builder.toString().getBytes();
+    }
+
+    public RequestBody getPostBody() {
+        MediaType mediaType = MediaType.parse("application/json; charset=UTF-8");
+        return RequestBody.create(mediaType, jsonBody);
     }
 
     public UrlMode getUrlMode() {

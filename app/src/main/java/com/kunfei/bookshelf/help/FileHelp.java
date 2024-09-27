@@ -41,7 +41,7 @@ public class FileHelp {
     }
 
     //获取文件
-    public static synchronized File getFile(String filePath) {
+    public static synchronized File createFileIfNotExist(String filePath) {
         File file = new File(filePath);
         try {
             if (!file.exists()) {
@@ -171,7 +171,7 @@ public class FileHelp {
 
     //获取txt文件
     public static List<File> getTxtFiles(String filePath, int layer) {
-        List txtFiles = new ArrayList();
+        List<File> txtFiles = new ArrayList<File>();
         File file = new File(filePath);
 
         //如果层级为 3，则直接返回
